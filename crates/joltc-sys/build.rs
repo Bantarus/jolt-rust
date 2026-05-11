@@ -28,11 +28,56 @@ fn build_joltc() {
     // features just based on opt-level.
     config.profile("Release");
 
+    // Read the actual cross-compile target rather than the build host so
+    // the rest of this fn can dispatch correctly. `cfg!(...)` would
+    // evaluate at build-script-compile time on the HOST.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
     // Jolt fails to compile via the cmake crate without specifying exception
     // handling behavior under MSVC. I'm not sure that this is the correct
     // exception handling mode.
-    if cfg!(windows) {
+    if target_os == "windows" {
         config.cxxflag("/EHsc");
+    }
+
+    // Native Android cross-compile setup. Without this, building
+    // joltc-sys for Android via the standard
+    // `cargo ndk --target <android-triple> check` flow fails because
+    // (a) cmake-rs defaults to MSBuild on Windows hosts which can't
+    // target Android; (b) the NDK's `android.toolchain.cmake` requires
+    // `ANDROID_ABI` to be set as a CMake variable (env var is
+    // ignored); (c) `ANDROID_NDK_HOME` is the canonical env name set
+    // by `nttld/setup-ndk` GitHub Action + cargo-ndk's local
+    // workflow.
+    //
+    // We translate cargo's target arch to NDK's ABI string and route
+    // CMake through the NDK toolchain file. `ANDROID_PLATFORM=android-21`
+    // is the same baseline most cargo-ndk users target.
+    if target_os == "android" {
+        let android_ndk_home = env::var("ANDROID_NDK_HOME")
+            .or_else(|_| env::var("ANDROID_NDK_ROOT"))
+            .or_else(|_| env::var("ANDROID_NDK"))
+            .expect(
+                "Android cross-compile requires ANDROID_NDK_HOME (or ANDROID_NDK_ROOT / \
+                 ANDROID_NDK) to point at the NDK install. Install via \
+                 `nttld/setup-ndk@v1` in CI or the Android SDK manager locally.",
+            );
+        let toolchain_file = format!("{android_ndk_home}/build/cmake/android.toolchain.cmake");
+        config.define("CMAKE_TOOLCHAIN_FILE", &toolchain_file);
+        let android_abi = match target_arch.as_str() {
+            "aarch64" => "arm64-v8a",
+            "arm" => "armeabi-v7a",
+            "x86" => "x86",
+            "x86_64" => "x86_64",
+            _ => panic!("unsupported Android target arch: {target_arch}"),
+        };
+        config.define("ANDROID_ABI", android_abi);
+        config.define("ANDROID_PLATFORM", "android-21");
+        // cmake-rs defaults to the host-OS generator (MSBuild on Win);
+        // the NDK toolchain only supports Ninja / Makefiles. Force
+        // Ninja explicitly.
+        config.generator("Ninja");
     }
 
     // Having IPO/LTO turned on breaks lld on Windows.
