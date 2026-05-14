@@ -1,3 +1,4 @@
+use std::mem;
 use std::ops::Deref;
 
 use joltc_sys::*;
@@ -15,6 +16,17 @@ pub unsafe trait RefTarget {
     unsafe fn release(value: *const Self);
 }
 
+/// Enables upcasting references safely.
+///
+/// # Safety
+///
+/// Self must be a base class of T. Self and T must have the same RefTarget base
+/// class.
+pub unsafe trait RefCast<T> {
+    fn cast(value: *const Self) -> *const T;
+    fn cast_mut(value: *mut Self) -> *mut T;
+}
+
 unsafe impl RefTarget for JPC_Shape {
     unsafe fn add_ref(value: *const Self) {
         JPC_Shape_AddRef(value);
@@ -22,6 +34,16 @@ unsafe impl RefTarget for JPC_Shape {
 
     unsafe fn release(value: *const Self) {
         JPC_Shape_Release(value);
+    }
+}
+
+unsafe impl RefCast<JPC_Shape> for JPC_MutableCompoundShape {
+    fn cast(value: *const Self) -> *const JPC_Shape {
+        value.cast::<JPC_Shape>()
+    }
+
+    fn cast_mut(value: *mut Self) -> *mut JPC_Shape {
+        value.cast::<JPC_Shape>()
     }
 }
 
@@ -53,6 +75,18 @@ impl<T: RefTarget> RefConst<T> {
 
     pub fn get(&self) -> *const T {
         self.ptr
+    }
+
+    pub fn cast<U>(self) -> RefConst<U>
+    where
+        U: RefTarget,
+        T: RefCast<U>,
+    {
+        let new = RefConst {
+            ptr: RefCast::cast(self.ptr),
+        };
+        mem::forget(self);
+        new
     }
 }
 
@@ -100,6 +134,18 @@ impl<T: RefTarget> Ref<T> {
 
     pub fn get(&self) -> *mut T {
         self.ptr
+    }
+
+    pub fn cast<U>(self) -> Ref<U>
+    where
+        U: RefTarget,
+        T: RefCast<U>,
+    {
+        let new = Ref {
+            ptr: RefCast::cast_mut(self.ptr),
+        };
+        mem::forget(self);
+        new
     }
 }
 
