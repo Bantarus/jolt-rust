@@ -29,7 +29,12 @@ asserts = ["native", "joltc-sys/asserts"]
 
 [dependencies]
 joltc-sys = { path = "../joltc-sys", default-features = false, optional = true }
-glam = "0.32.1"
+# Pinned to 0.30 to match Bevy 0.18.1's glam dep so engine-plugin-physics
+# (Bevy-side) sees the same Vec3/Quat types as engine-jolt and can pass
+# Transform.translation directly to BodyDef.position without conversion.
+# Rolt 0.3.1 (reference, not dep) is on 0.32; we accept the divergence
+# since we don't depend on rolt.
+glam = "0.30"
 paste = "1.0.15"
 thiserror = "1.0"
 

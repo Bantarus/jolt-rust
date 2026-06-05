@@ -97,7 +97,7 @@ checksum = "a47c1c47d2f5964e29c61246e81db715514cd532db6b5116a25ea3c03d6780a2"
 name = "engine-jolt"
 version = "0.0.1"
 dependencies = [
- "glam",
+ "glam 0.30.10",
  "joltc-sys",
  "paste",
  "thiserror",
@@ -123,6 +123,12 @@ dependencies = [
  "libc",
  "wasi",
 ]
+
+[[package]]
+name = "glam"
+version = "0.30.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
 
 [[package]]
 name = "glam"
@@ -351,7 +357,7 @@ checksum = "adad44e29e4c806119491a7f06f03de4d1af22c3a680dd47f1e6e179439d1f56"
 name = "rolt"
 version = "0.3.1+Jolt-5.0.0"
 dependencies = [
- "glam",
+ "glam 0.32.1",
  "joltc-sys",
  "paste",
 ]
