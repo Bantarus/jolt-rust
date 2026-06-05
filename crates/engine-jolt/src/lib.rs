@@ -1,34 +1,57 @@
 //! engine-jolt -- Bevy-agnostic safe wrapper over JoltC.
 //!
-//! This is a placeholder skeleton committed at v0.22 Step 1 so the
-//! engine-side path-dep from `xtreme-game-engine/crates/engine-plugin-physics`
-//! resolves during the Step 3 plugin-skeleton work. The actual safe
-//! wrapper surface (World / WorldConfig / drive_step / BodyInterface /
-//! ShapeDef / NarrowPhaseQuery / deterministic ContactSink /
-//! WorldSnapshot) is authored in v0.22 Step 2.
+//! v0.22 Step 2.0 surface. Owns the deterministic `World` +
+//! `BodyInterface` + safe `ShapeDef` builders (Box / Sphere /
+//! Capsule). Headless `tests/determinism_two_runs.rs` proves the
+//! safe API produces bit-identical body positions across two
+//! independent runs given identical inputs.
 //!
-//! Until Step 2 lands, this crate exports nothing public beyond a
-//! single feature-flag identification helper. The native feature is
-//! still wired to joltc-sys so feature unification across the engine
-//! workspace stays honest.
+//! Step 2.1 (immediate follow-on) lands `ShapeDef::ConvexHull / Mesh
+//! / Compound`, the deterministic `ContactSink` (sorted buffer +
+//! listener-bridge macro lifted from rolt under dual MIT/Apache-2.0
+//! attribution), `NarrowPhaseQuery::cast_ray`, and `WorldSnapshot`
+//! save/restore.
 //!
 //! Design reference: `xtreme-game-engine/docs/v0.22-design.md`
 //! section "Crate layout" -> `engine-jolt (sibling repo, Bevy-AGNOSTIC)`.
-//! Rule reference: forthcoming `xtreme-game-engine/AGENTS.md` Rule 28
-//! (landing at v0.22 milestone tag).
+
+pub mod body;
+pub mod body_interface;
+pub mod error;
+pub mod layers;
+pub mod math;
+pub mod shape;
+pub mod world;
+
+pub use body::{BodyDef, BodyId, BodyType};
+pub use body_interface::BodyInterface;
+pub use error::JoltError;
+pub use layers::{BroadPhaseLayer, ObjectLayer};
+pub use shape::{ShapeDef, ShapeHandle};
+pub use world::{World, WorldConfig};
+
+/// One-stop import for the common surface. Mirrors the Bevy
+/// `prelude::*` convention so `use engine_jolt::prelude::*;` brings
+/// in the value types most engine-plugin-physics methods need.
+pub mod prelude {
+    pub use crate::body::{BodyDef, BodyId, BodyType};
+    pub use crate::body_interface::BodyInterface;
+    pub use crate::error::JoltError;
+    pub use crate::layers::{BroadPhaseLayer, ObjectLayer};
+    pub use crate::shape::{ShapeDef, ShapeHandle};
+    pub use crate::world::{World, WorldConfig};
+}
 
 /// Returns `true` if this crate was built with the `native` feature
 /// (i.e. joltc-sys is linked and the Jolt C++ runtime is available).
-/// Returns `false` for the no-op stub build downstream consumers see
-/// via `cargo check --workspace` without `--features physics-native`.
 pub const fn native_enabled() -> bool {
     cfg!(feature = "native")
 }
 
 /// Returns `true` if this crate was built with `cross_deterministic`,
-/// guaranteeing bit-identical physics across {Win-MSVC, Linux-Clang,
-/// macOS-ARM64, Linux-ARM64} same-binary same-input runs at ~8% perf
-/// cost. Implies `native_enabled()`.
+/// guaranteeing bit-identical physics across Win-MSVC / Linux-Clang /
+/// macOS-ARM64 / Linux-ARM64 same-binary same-input runs at ~8%
+/// perf cost. Implies `native_enabled()`.
 pub const fn cross_deterministic_enabled() -> bool {
     cfg!(feature = "cross_deterministic")
 }
@@ -39,8 +62,6 @@ mod tests {
 
     #[test]
     fn feature_flags_consistent() {
-        // If cross_deterministic is on, native must also be on
-        // (the feature graph enforces this).
         if cross_deterministic_enabled() {
             assert!(native_enabled(), "cross_deterministic must imply native");
         }
