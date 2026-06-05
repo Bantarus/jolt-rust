@@ -4,11 +4,42 @@ use std::path::Path;
 use anyhow::Context;
 
 fn main() {
+    check_no_fast_math();
+
     let flags = build_flags();
 
     build_joltc();
     link();
     generate_bindings(&flags).unwrap();
+}
+
+/// Refuse to build if CFLAGS / CXXFLAGS / RUSTFLAGS carry -ffast-math
+/// or -march=native. Both enable FMA contraction (fused-multiply-add
+/// merging) which produces platform-specific floating-point results
+/// and silently breaks Jolt's cross-platform-deterministic guarantee.
+/// See JoltPhysics/Build/CMakeLists.txt:615 -- USE_FMADD is forced
+/// off when CROSS_PLATFORM_DETERMINISTIC=ON. The guard exists because
+/// nothing else catches this: the build succeeds, tests pass on the
+/// dev machine, then determinism hashes diverge across consumers.
+fn check_no_fast_math() {
+    let vars = ["CFLAGS", "CXXFLAGS", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS"];
+    let banned = ["-ffast-math", "-march=native"];
+    for var in vars {
+        if let Ok(val) = env::var(var) {
+            for needle in banned {
+                if val.contains(needle) {
+                    panic!(
+                        "joltc-sys: refusing to build with `{needle}` in `{var}={val:?}`. \
+                         This contracts FMA (fused-multiply-add) into the float pipeline \
+                         and produces platform-specific results, silently breaking \
+                         Jolt's cross-platform-deterministic guarantee. Remove the flag, \
+                         or disable the `cross-platform-deterministic` feature if you \
+                         genuinely don't need bit-identical physics across platforms."
+                    );
+                }
+            }
+        }
+    }
 }
 
 fn build_joltc() {
@@ -99,6 +130,18 @@ fn build_joltc() {
         config.define("USE_ASSERTS", "ON");
     }
 
+    // CROSS_PLATFORM_DETERMINISTIC propagates into JoltPhysics via
+    // CMake subdirectory scope inheritance:
+    //   JoltC/CMakeLists.txt:83  add_subdirectory(JoltPhysics/Build)
+    //   JoltPhysics/Build/CMakeLists.txt:547  if (CROSS_PLATFORM_DETERMINISTIC)
+    //     target_compile_definitions(Jolt PUBLIC JPH_CROSS_PLATFORM_DETERMINISTIC)
+    // JoltC inherits the PUBLIC compile def via
+    //   JoltC/CMakeLists.txt:44  target_link_libraries(joltc PUBLIC Jolt)
+    // so both libraries are built with the flag in lockstep.
+    if cfg!(feature = "cross-platform-deterministic") {
+        config.define("CROSS_PLATFORM_DETERMINISTIC", "ON");
+    }
+
     let mut dst = config.build();
 
     // Jolt and JoltC put libraries in the 'lib' subfolder. This goes against
@@ -149,6 +192,14 @@ fn build_flags() -> Vec<(&'static str, &'static str)> {
     if cfg!(feature = "object-layer-u32") {
         flags.push(("JPC_OBJECT_LAYER_BITS", "32"));
         flags.push(("JPH_OBJECT_LAYER_BITS", "32"));
+    }
+
+    // Mirror the CMake CROSS_PLATFORM_DETERMINISTIC into bindgen so
+    // header-driven enum/struct layout matches the compiled library.
+    // No JPC_-prefixed twin: JoltC has no determinism-conditional
+    // surface today (the flag only gates internal float ops in Jolt).
+    if cfg!(feature = "cross-platform-deterministic") {
+        flags.push(("JPH_CROSS_PLATFORM_DETERMINISTIC", "1"));
     }
 
     flags

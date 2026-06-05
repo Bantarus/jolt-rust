@@ -20,6 +20,14 @@ double-precision = []
 # Changes ObjectLayer and related types to be u32 instead of u16.
 object-layer-u32 = []
 
+# Build Jolt with JPH_CROSS_PLATFORM_DETERMINISTIC=ON so physics state
+# is bit-identical across Win-MSVC / Linux-Clang / macOS-ARM /
+# Linux-ARM64. Disables JPH_USE_FMADD automatically (FMA contraction
+# produces platform-specific float results). ~8% perf cost. Default
+# off here -- enable from a downstream feature when the consumer
+# wants the determinism guarantee.
+cross-platform-deterministic = []
+
 [dependencies]
 
 [build-dependencies]
