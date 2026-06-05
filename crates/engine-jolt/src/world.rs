@@ -75,6 +75,9 @@ pub struct World {
     object_vs_object_layer_filter: *mut joltc_sys::JPC_ObjectLayerPairFilter,
     job_system: *mut joltc_sys::JPC_JobSystemSingleThreaded,
     temp_allocator: *mut joltc_sys::JPC_TempAllocatorImpl,
+    /// Leaked Box pointer; reclaimed in Drop AFTER listener delete.
+    contact_state: *mut crate::contact::ContactState,
+    contact_listener: *mut joltc_sys::JPC_ContactListener,
 }
 
 #[cfg(not(feature = "native"))]
@@ -120,6 +123,21 @@ impl World {
                 crate::math::to_jpc_vec3(config.gravity),
             );
 
+            // Allocate the contact-event buffer on the heap; pass its
+            // pointer as the listener `this` so OnContact callbacks
+            // can push into it deterministically. The buffer lives
+            // until World::Drop, where we delete the listener first
+            // and then reclaim the Box.
+            let contact_state = crate::contact::ContactState::new();
+            let contact_listener = joltc_sys::JPC_ContactListener_new(
+                contact_state as *mut std::ffi::c_void,
+                crate::contact::CONTACT_LISTENER_FNS,
+            );
+            joltc_sys::JPC_PhysicsSystem_SetContactListener(
+                physics_system,
+                contact_listener,
+            );
+
             // JoltC v0.3.1 does not expose JPC_PhysicsSystem_*PhysicsSettings;
             // the global `mNumVelocitySteps = 10`, `mNumPositionSteps = 2`,
             // and `mDeterministicSimulation = true` Jolt defaults stand. Per-body
@@ -141,6 +159,8 @@ impl World {
                 object_vs_object_layer_filter,
                 job_system,
                 temp_allocator,
+                contact_state,
+                contact_listener,
             }
         }
     }
@@ -183,13 +203,38 @@ impl World {
         BodyInterface::from_raw(raw)
     }
 
+    /// Borrow the `NarrowPhaseQuery` for raycast / shape-cast / collide
+    /// queries. Read-only -- a `&self` borrow suffices because Jolt's
+    /// narrow phase reads the broadphase tree without mutating it.
+    pub fn narrow_phase(&self) -> crate::narrow_phase::NarrowPhaseQuery<'_> {
+        let raw = unsafe {
+            joltc_sys::JPC_PhysicsSystem_GetNarrowPhaseQuery(self.physics_system)
+        };
+        crate::narrow_phase::NarrowPhaseQuery::from_raw(raw)
+    }
+
+    /// Drain and clear the per-tick contact event buffer. Events are
+    /// returned sorted by `(body_a, body_b, kind)` so iteration order
+    /// is deterministic across runs. Call this after `drive_step` in
+    /// the same tick to consume contacts; events not drained persist
+    /// across ticks (the buffer accumulates).
+    pub fn drain_contacts(&mut self) -> Vec<crate::contact::ContactEvent> {
+        crate::contact::drain_sorted(self.contact_state)
+    }
 }
 
 #[cfg(feature = "native")]
 impl Drop for World {
     fn drop(&mut self) {
         unsafe {
+            // Tear down in reverse construction order. The contact
+            // listener must die BEFORE the physics system stops
+            // referencing it; the ContactState Box must outlive the
+            // listener so any in-flight callback completes against
+            // valid memory.
             joltc_sys::JPC_PhysicsSystem_delete(self.physics_system);
+            joltc_sys::JPC_ContactListener_delete(self.contact_listener);
+            crate::contact::ContactState::destroy(self.contact_state);
             joltc_sys::JPC_BroadPhaseLayerInterface_delete(
                 self.broad_phase_layer_interface,
             );

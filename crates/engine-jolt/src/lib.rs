@@ -17,16 +17,20 @@
 
 pub mod body;
 pub mod body_interface;
+pub mod contact;
 pub mod error;
 pub mod layers;
 pub mod math;
+pub mod narrow_phase;
 pub mod shape;
 pub mod world;
 
 pub use body::{BodyDef, BodyId, BodyType};
 pub use body_interface::BodyInterface;
+pub use contact::{ContactEvent, ContactKind};
 pub use error::JoltError;
 pub use layers::{BroadPhaseLayer, ObjectLayer};
+pub use narrow_phase::{NarrowPhaseQuery, RayHit};
 pub use shape::{ShapeDef, ShapeHandle};
 pub use world::{World, WorldConfig};
 
@@ -36,8 +40,10 @@ pub use world::{World, WorldConfig};
 pub mod prelude {
     pub use crate::body::{BodyDef, BodyId, BodyType};
     pub use crate::body_interface::BodyInterface;
+    pub use crate::contact::{ContactEvent, ContactKind};
     pub use crate::error::JoltError;
     pub use crate::layers::{BroadPhaseLayer, ObjectLayer};
+    pub use crate::narrow_phase::{NarrowPhaseQuery, RayHit};
     pub use crate::shape::{ShapeDef, ShapeHandle};
     pub use crate::world::{World, WorldConfig};
 }
