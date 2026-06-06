@@ -104,6 +104,21 @@ impl<'world> BodyInterface<'world> {
         crate::math::from_jpc_vec3(v)
     }
 
+    /// True while the body is awake (in a simulating island). Static
+    /// bodies and slept dynamic bodies report `false`. This is the one
+    /// primitive the Bevy plugin's `Sleeping` marker keys off; Jolt's
+    /// island/sleep heuristic is deterministic under the single-threaded
+    /// `cross_deterministic` job system, so the awake->asleep transition
+    /// tick is bit-identical across runs and platforms.
+    pub fn is_active(&self, id: BodyId) -> bool {
+        unsafe {
+            joltc_sys::JPC_BodyInterface_IsActive(
+                self.raw as *const joltc_sys::JPC_BodyInterface,
+                id.into(),
+            )
+        }
+    }
+
     /// Set the body's linear velocity.
     pub fn set_linear_velocity(&mut self, id: BodyId, v: Vec3) {
         unsafe {
@@ -131,6 +146,9 @@ impl<'world> BodyInterface<'world> {
         panic!("engine-jolt: BodyInterface called without the `native` feature")
     }
     pub fn linear_velocity(&self, _id: BodyId) -> Vec3 {
+        panic!("engine-jolt: BodyInterface called without the `native` feature")
+    }
+    pub fn is_active(&self, _id: BodyId) -> bool {
         panic!("engine-jolt: BodyInterface called without the `native` feature")
     }
     pub fn set_linear_velocity(&mut self, _id: BodyId, _v: Vec3) {
