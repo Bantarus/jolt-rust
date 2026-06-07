@@ -129,6 +129,17 @@ impl<'world> BodyInterface<'world> {
             );
         }
     }
+
+    /// Wake a sleeping body -- re-insert it into a simulating island.
+    /// Jolt does NOT auto-wake a slept body when the static geometry
+    /// beneath it is removed (e.g. terrain dug out from under settled
+    /// debris); call this to make it fall. No-op on an already-active
+    /// body. Deterministic under the single-threaded job system.
+    pub fn activate(&mut self, id: BodyId) {
+        unsafe {
+            joltc_sys::JPC_BodyInterface_ActivateBody(self.raw, id.into());
+        }
+    }
 }
 
 #[cfg(not(feature = "native"))]
@@ -152,6 +163,9 @@ impl<'world> BodyInterface<'world> {
         panic!("engine-jolt: BodyInterface called without the `native` feature")
     }
     pub fn set_linear_velocity(&mut self, _id: BodyId, _v: Vec3) {
+        panic!("engine-jolt: BodyInterface called without the `native` feature")
+    }
+    pub fn activate(&mut self, _id: BodyId) {
         panic!("engine-jolt: BodyInterface called without the `native` feature")
     }
 }
