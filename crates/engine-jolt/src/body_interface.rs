@@ -130,6 +130,86 @@ impl<'world> BodyInterface<'world> {
         }
     }
 
+    /// Read the body's angular velocity (rad/s, world space). The
+    /// companion to `linear_velocity`; together they are the complete
+    /// velocity state a predicted-physics rollback captures + restores
+    /// (v0.38). Closes the readback gap the Bevy plugin's `sync_out`
+    /// flagged ("angular velocity getter queued for engine-jolt").
+    pub fn angular_velocity(&self, id: BodyId) -> Vec3 {
+        let v = unsafe {
+            joltc_sys::JPC_BodyInterface_GetAngularVelocity(
+                self.raw as *const joltc_sys::JPC_BodyInterface,
+                id.into(),
+            )
+        };
+        crate::math::from_jpc_vec3(v)
+    }
+
+    /// Set the body's angular velocity (rad/s, world space).
+    pub fn set_angular_velocity(&mut self, id: BodyId, v: Vec3) {
+        unsafe {
+            joltc_sys::JPC_BodyInterface_SetAngularVelocity(
+                self.raw,
+                id.into(),
+                crate::math::to_jpc_vec3(v),
+            );
+        }
+    }
+
+    /// Teleport the body to a world-space pose, activating it. Pairs
+    /// with `set_pose_and_velocity` when velocity must also be restored.
+    pub fn set_position_and_rotation(
+        &mut self,
+        id: BodyId,
+        position: Vec3,
+        rotation: glam::Quat,
+    ) {
+        unsafe {
+            joltc_sys::JPC_BodyInterface_SetPositionAndRotation(
+                self.raw,
+                id.into(),
+                crate::math::to_jpc_rvec3(position),
+                crate::math::to_jpc_quat(rotation),
+                joltc_sys::JPC_ACTIVATION_ACTIVATE,
+            );
+        }
+    }
+
+    /// Atomically restore a body's full kinematic state -- pose AND
+    /// linear+angular velocity -- in a single FFI call, IN PLACE (the
+    /// body stays alive; NOT destroy/respawn). This is the
+    /// predicted-physics B2 restore primitive (v0.38): on a
+    /// misprediction the rollback pushes the captured authoritative
+    /// `(Transform, Velocity)` back into the live Jolt body, then
+    /// replays the unacked inputs.
+    ///
+    /// B2 fidelity ceiling (load-bearing): this restores the PERSISTENT
+    /// rigid-body motion state only. Jolt's per-step solver caches
+    /// (contact warm-start lambdas, manifolds, island assignment,
+    /// sleep-timer phase) are NOT captured, so a resting/stacked-contact
+    /// body diverges on the resim frame. Bit-exact resume awaits the B1
+    /// `JPC_StateRecorder` binding; v0.38 scopes prediction to
+    /// free-flight / shallow-contact bodies.
+    pub fn set_pose_and_velocity(
+        &mut self,
+        id: BodyId,
+        position: Vec3,
+        rotation: glam::Quat,
+        linear: Vec3,
+        angular: Vec3,
+    ) {
+        unsafe {
+            joltc_sys::JPC_BodyInterface_SetPositionRotationAndVelocity(
+                self.raw,
+                id.into(),
+                crate::math::to_jpc_rvec3(position),
+                crate::math::to_jpc_quat(rotation),
+                crate::math::to_jpc_vec3(linear),
+                crate::math::to_jpc_vec3(angular),
+            );
+        }
+    }
+
     /// Wake a sleeping body -- re-insert it into a simulating island.
     /// Jolt does NOT auto-wake a slept body when the static geometry
     /// beneath it is removed (e.g. terrain dug out from under settled
@@ -163,6 +243,25 @@ impl<'world> BodyInterface<'world> {
         panic!("engine-jolt: BodyInterface called without the `native` feature")
     }
     pub fn set_linear_velocity(&mut self, _id: BodyId, _v: Vec3) {
+        panic!("engine-jolt: BodyInterface called without the `native` feature")
+    }
+    pub fn angular_velocity(&self, _id: BodyId) -> Vec3 {
+        panic!("engine-jolt: BodyInterface called without the `native` feature")
+    }
+    pub fn set_angular_velocity(&mut self, _id: BodyId, _v: Vec3) {
+        panic!("engine-jolt: BodyInterface called without the `native` feature")
+    }
+    pub fn set_position_and_rotation(&mut self, _id: BodyId, _position: Vec3, _rotation: glam::Quat) {
+        panic!("engine-jolt: BodyInterface called without the `native` feature")
+    }
+    pub fn set_pose_and_velocity(
+        &mut self,
+        _id: BodyId,
+        _position: Vec3,
+        _rotation: glam::Quat,
+        _linear: Vec3,
+        _angular: Vec3,
+    ) {
         panic!("engine-jolt: BodyInterface called without the `native` feature")
     }
     pub fn activate(&mut self, _id: BodyId) {
